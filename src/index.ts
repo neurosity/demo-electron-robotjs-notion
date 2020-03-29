@@ -1,10 +1,9 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
-import { myCreds } from "./secrets"
+import { deviceId, email, password } from "./secrets"
 import { Notion } from "@neurosity/notion";
 import * as robot from "robotjs";
 
-const deviceId = "f322fcc7a794fb5f4675a69371e949b2";
 const label = "leftArm";
 
 const notion = new Notion({
@@ -13,8 +12,8 @@ const notion = new Notion({
 
 notion
   .login({
-    email: myCreds.email,
-    password: myCreds.password
+    email,
+    password   
   })
   .then(() => {
     console.log("Logged in");

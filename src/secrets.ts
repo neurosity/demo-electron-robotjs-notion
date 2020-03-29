@@ -1,4 +1,3 @@
-export const myCreds = {
-    email: "",
-    password: ""
-}
+export const deviceId = "";
+export const email = "";
+export const password = "";
