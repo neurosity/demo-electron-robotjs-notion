@@ -1,8 +1,10 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import { deviceId, email, password } from "./secrets"
 import { Notion } from "@neurosity/notion";
 import * as robot from "robotjs";
+import { pipe } from "rxjs";
+import { map, bufferCount, filter } from "rxjs/operators";
 
 const label = "leftArm";
 
@@ -21,15 +23,37 @@ notion
     const kMouseUp = "up";
     let mouseState = kMouseUp;
     let releaseMouseTimeout: NodeJS.Timeout | null = null;
-    notion.kinesis(label).subscribe(intent => {
-      if (releaseMouseTimeout) {
-        clearTimeout(releaseMouseTimeout);
+
+    const numberOfPredictionsPerChoice = 4;
+    const threshold = 0.85;
+    notion.predictions(label)
+    .pipe(
+      map((prediction: any) => prediction.probability),
+      bufferCount(numberOfPredictionsPerChoice, 1),
+      map((probabilities: number[]): number => {
+        return (
+          probabilities.reduce(
+            (acc: number, probability: number) => acc + probability
+          ) / probabilities.length
+        );
+      }),
+      filter((averagedProbability: number) => averagedProbability > threshold)
+    )
+    .subscribe(averagedProbability => {
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('prediction', averagedProbability);
       }
-      releaseMouseTimeout = setTimeout(() => {
-        robot.mouseToggle(kMouseUp);
-      }, 250); // ms
-      robot.mouseToggle(kMouseDown);    
-      console.log("Mouse toggled", mouseState, " at ", intent.timestamp);
+      
+      console.log(averagedProbability);
+      // if (releaseMouseTimeout) {
+      //   clearTimeout(releaseMouseTimeout);
+      // }
+      // releaseMouseTimeout = setTimeout(() => {
+      //   robot.mouseToggle(kMouseUp);
+      // }, 250); // ms
+      // robot.mouseToggle(kMouseDown);    
+      // console.log("Mouse toggled", mouseState, " at ", intent.timestamp);
     });
   })
   .catch(error => {
@@ -43,11 +67,13 @@ if (require('electron-squirrel-startup')) { // eslint-disable-line global-requir
   app.quit();
 }
 
+let mainWindow: BrowserWindow | null = null;
+
 const createWindow = () => {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    height: 600,
-    width: 1000,
+  mainWindow = new BrowserWindow({
+    height: 1000,
+    width: 1200,
   });
 
   // and load the index.html of the app.

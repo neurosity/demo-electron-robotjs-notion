@@ -4,16 +4,15 @@ var electron_1 = require("electron");
 var path = require("path");
 var secrets_1 = require("./secrets");
 var notion_1 = require("@neurosity/notion");
-var robot = require("robotjs");
-var deviceId = "f322fcc7a794fb5f4675a69371e949b2";
+var operators_1 = require("rxjs/operators");
 var label = "leftArm";
 var notion = new notion_1.Notion({
-    deviceId: deviceId
+    deviceId: secrets_1.deviceId
 });
 notion
     .login({
-    email: secrets_1.myCreds.email,
-    password: secrets_1.myCreds.password
+    email: secrets_1.email,
+    password: secrets_1.password
 })
     .then(function () {
     console.log("Logged in");
@@ -21,15 +20,25 @@ notion
     var kMouseUp = "up";
     var mouseState = kMouseUp;
     var releaseMouseTimeout = null;
-    notion.kinesis(label).subscribe(function (intent) {
-        if (releaseMouseTimeout) {
-            clearTimeout(releaseMouseTimeout);
+    var numberOfPredictionsPerChoice = 4;
+    var threshold = 0.85;
+    notion.predictions(label)
+        .pipe(operators_1.map(function (prediction) { return prediction.probability; }), operators_1.bufferCount(numberOfPredictionsPerChoice, 1), operators_1.map(function (probabilities) {
+        return (probabilities.reduce(function (acc, probability) { return acc + probability; }) / probabilities.length);
+    }), operators_1.filter(function (averagedProbability) { return averagedProbability > threshold; }))
+        .subscribe(function (averagedProbability) {
+        if (mainWindow) {
+            mainWindow.webContents.send('prediction', averagedProbability);
         }
-        releaseMouseTimeout = setTimeout(function () {
-            robot.mouseToggle(kMouseUp);
-        }, 250); // ms
-        robot.mouseToggle(kMouseDown);
-        console.log("Mouse toggled", mouseState, " at ", intent.timestamp);
+        console.log(averagedProbability);
+        // if (releaseMouseTimeout) {
+        //   clearTimeout(releaseMouseTimeout);
+        // }
+        // releaseMouseTimeout = setTimeout(() => {
+        //   robot.mouseToggle(kMouseUp);
+        // }, 250); // ms
+        // robot.mouseToggle(kMouseDown);    
+        // console.log("Mouse toggled", mouseState, " at ", intent.timestamp);
     });
 })["catch"](function (error) {
     console.log(error);
@@ -39,11 +48,12 @@ notion
 if (require('electron-squirrel-startup')) { // eslint-disable-line global-require
     electron_1.app.quit();
 }
+var mainWindow = null;
 var createWindow = function () {
     // Create the browser window.
-    var mainWindow = new electron_1.BrowserWindow({
-        height: 600,
-        width: 1000
+    mainWindow = new electron_1.BrowserWindow({
+        height: 1000,
+        width: 1200
     });
     // and load the index.html of the app.
     mainWindow.loadFile(path.join(__dirname, '../src/index.html'));
